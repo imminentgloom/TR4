@@ -18,7 +18,21 @@ tab = require("tabutil")
 
 nb = include("nb/lib/nb")
 
-t = {}
+local t = {} -- hold tracks
+local p = {  -- hold patterns
+	{{},{},{},{}},
+	{{},{},{},{}},
+	{{},{},{},{}},
+	{{},{},{},{}},
+}
+local p_step = {
+	{{},{},{},{}},
+	{{},{},{},{}},
+	{{},{},{},{}},
+	{{},{},{},{}},
+}
+local p_state = {"empty", "empty", "empty", "empty"}
+local p_current = 1
 
 local edit_step = {1, 1}
 
@@ -39,14 +53,19 @@ local fill_buff = {}
 local shift_buff_1 = {}
 local shift_buff_2 = {}
 
-local fill_rate = {1, 2, 4, 8, 16}
+local fill_rate = {1, 2, 4, 8, 16, 32}
+local probably = {1/2000, 1/1000, 1/500}
 
 local ppqn = 96
 
-local fps = 6
+local fps = 32
 local frame = 1
+local frame_anim = 1
+local frame_steps = 8
 
 local k1_held = false
+
+local crow_trig = true
 
 -- Track class
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -91,31 +110,39 @@ end
 
 function track:retreat() -- decrement substeps and steps inside loop_start and loop_end
    self.substep = self.substep - 1
+
    if self.substep < 1 then
       self.substep = 24
       self.step = self.step - 1
    end
+
    if self.step > self.loop_end then
       self.step = self.loop_end
    end
+
    if self.step < self.loop_start then
       self.step = self.loop_end
    end
+
    self.index = math.floor((self.step - 1) * self.substeps + self.substep)
 end
 
 function track:advance() -- increment substeps and steps inside loop_start and loop_end
    self.substep = self.substep + 1
+
    if self.substep > self.substeps then
       self.substep = 1
       self.step = self.step + 1
    end
+
    if self.step < self.loop_start then
       self.step = self.loop_start
    end
+
    if self.step > self.loop_end then
       self.step = self.loop_start
    end
+	
    self.index = math.floor((self.step - 1) * self.substeps + self.substep)
 end
 
@@ -123,6 +150,7 @@ function track:write(val, index) -- writes val to index OR value to current poss
    index = index or self.index
    val = val or self.data[index] % 2
    self.data[index] = val
+
    if val == 1 then
       self.data_step[self:index_2_step(index)] = 1
    else
@@ -150,6 +178,7 @@ function track:clear_sequence()
    for n = 1, 16 * self.substeps do 
       self.data[n] = 0
    end
+
    for n = 1, 16 do
       self.data_step[n] = 0
    end
@@ -157,15 +186,22 @@ end
 
 function track:clear_step(step) -- clear step OR clear current step
    step = step or self.step
+
    for n = self:step_2_index(step), self:step_2_index(step) + 23 do
       self.data[n] = 0
    end   
+
    self.data_step[step] = 0
 end
 
 function track:hit() -- trigger drum hit
    player = params:lookup_param(self.voice):get_player()
    player:play_note(self.note, self.velocity, self.duration)
+	
+	if crow_trig then
+		crow.output[n].action = "pulse()"
+		crow.output[n]()
+	end
 end
 
 function track:step_2_index(step) -- converts step# to index
@@ -179,11 +215,13 @@ end
 function track:get_step(step) -- cheks if step has active substeps OR current step has active
    step = step or self.step
    local sum = 0
+
    for substep = 1, self.substeps do
       if self.data[(step - 1) * self.substeps + substep] == 1 then
          sum = sum + 1
       end
    end
+
    if sum == 0 then return false else return true end
 end
 
@@ -204,6 +242,51 @@ local function g_buffer(buff, val, z) -- tracks held keys in order
    end
 end
 
+-- pattern, load
+local function pattern_to_sequence(pattern)
+	for track = 1, 4 do
+		for index = 1, ppqn * 4 do
+			t[track].data[index] = p[pattern][track][index]
+		end
+
+		for step = 1, 16 do
+			t[track].data_step[step] = p_step[pattern][track][step]
+		end
+	end
+
+	p_current = pattern
+end
+
+-- pattern, save
+local function sequence_to_pattern(pattern)
+	for track = 1, 4 do
+		for index = 1, ppqn * 4 do
+			p[pattern][track][index] = t[track].data[index]
+		end
+
+		for step = 1, 16 do
+			p_step[pattern][track][step] = t[track].data_step[step]
+		end
+	end
+
+	p_state[pattern] = "full"
+end
+
+-- pattern, clear
+local function pattern_clear(pattern)
+	for track = 1, 4 do
+		for index = 1, ppqn * 4 do
+			p[pattern][track][index] = 0
+		end
+
+		for step = 1, 16 do
+			p_step[pattern][track][step] = 0
+		end
+	end
+
+	p_state[pattern] = "empty"
+end
+
 -- init
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
@@ -215,6 +298,10 @@ function init()
    
    nb:add_player_params()
    
+	for pattern = 1, 4 do
+		pattern_clear(pattern)
+	end
+
    clk_main = clock.run(c_main)
    clk_fps = clock.run(c_fps)
 
@@ -224,6 +311,11 @@ function init()
 
    -- params
    -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+	params:add_option("crow", "crow triggers", {"on", "off"}, 1)
+	params:set_action("crow", function(x) if x == 1 then crow_trig = true else crow_trig = false end end)
+   -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+	
+
 
    g_redraw()
 
@@ -251,19 +343,18 @@ function c_main_core(n)
          
    if fill and trig[n] then
       local rate = ppqn / 4 / fill_rate[util.clamp(#fill_buff, 0, #fill_rate)]
-      local index = ((trig_index[n] - 1) % rate) + 1
-      local substep = ((t[n].substep - 1 + index) % rate) + 1
 
-      if substep == 1 then
+      if ((t[n].substep - 1) % rate) + 1 == ((trig_index[n] - 1) % rate) + 1 then
          if rec[n] then
             t[n]:write(1)
          end
+
          if not rec[n] and not mute[n] then
             t[n]:hit()                  
          end
       end
    end
-         
+
    if t[n].data[t[n].index] == 1 and not mute[n] then
       t[n]:hit()
    end
@@ -274,11 +365,16 @@ end
 function c_fps()
    while true do
       clock.sleep(1/fps)
+
       frame = frame + 1
+
       if frame > fps then
          frame = 1
       end
-      frame_rnd = math.random(8)
+
+		frame_anim = util.clamp(math.floor(frame_steps / fps * frame), 1, frame_steps)
+		frame_rnd = math.random(frame_steps)
+
       g_redraw()
    end
 end
@@ -345,6 +441,7 @@ function g.key(x, y, z)
          trig_index[col] = t[col].substep
          trig[col] = true
       end
+
       if z == 0 then
          trig[col] = false
          trig_index[col] = 1
@@ -369,14 +466,16 @@ function g.key(x, y, z)
    
    -- shift 1
    if row == 8 and col >=6 and col <=8 then
-      g_buffer(shift_buff_1, x, z)
+      g_buffer(shift_buff_1, col, z)
       if #shift_buff_1 > 0 then shift_1 = true else shift_1 = false end
    end
    
    -- shift 2 
    if row == 8 and col >=9 and col <=11 then
-      g_buffer(shift_buff_2, x, z)
+      g_buffer(shift_buff_2, col, z)
+
       if #shift_buff_2 > 0 then shift_2 = true else shift_2 = false end
+
       if erase then
          for n = 1, 4 do
             t[n]:clear_sequence()
@@ -384,30 +483,60 @@ function g.key(x, y, z)
       end
    end
    
-   -- fill
-   if (row == 7 or row == 8) and x >= 13 then
-      g_buffer(fill_buff, x, z)
-      if #fill_buff > 0 then fill = true else fill = false end
-   end      
+	-- patterns
+	if row == 5 and col >= 13 then
+		local pattern = col - 12
+
+		if z == 1 then
+			if erase then 	
+				pattern_clear(pattern)
+			elseif shift_2 then
+				sequence_to_pattern(pattern)
+			else
+				pattern_to_sequence(pattern)
+			end
+		end
+	end
 
    -- erase
    if row == 6 and col == 16 then
-      if z == 1 then erase = true else erase = false end
-      if shift_2 then
-         for n = 1, 4 do
-            t[n]:clear_sequence()
-         end
-      end
+      if z == 1 then erase = true else erase = false end	
    end
+
+	if erase and shift_2 then
+		for n = 1, 4 do
+			t[n]:clear_sequence()
+		end
+	end
    
    -- random
    if row == 6 and col == 15 then
       if z == 1 then random = true else random = false end
    end
+
+	if random and shift_2 then
+		for track = 1, 4 do
+			if rec[track] then
+				for index = 1, ppqn * 4 do
+
+					if math.random() < probably[#shift_buff_2] then
+						t[track].data[index] = (t[track].data[index] + 1) % 2
+
+						if t[track]:get_step(t[track]:index_2_step(index)) then
+							t[track].data_step[t[track]:index_2_step(index)] = 1
+						else
+							t[track].data_step[t[track]:index_2_step(index)] = 0
+						end
+					end
+				end
+			end
+		end
+	end
    
    -- reset
    if row == 6 and col == 14 then
       if z == 1 then seq_reset = true else seq_reset = false end
+		
       if z == 1 then
          for n = 1, 4 do
             t[n]:reset()
@@ -428,6 +557,13 @@ function g.key(x, y, z)
       end
    end   
 
+	-- fill
+	if (row == 7 or row == 8) and col >= 13 then
+		local col = ((row - 7) * 4) + col - 12 
+		g_buffer(fill_buff, col, z)
+		if #fill_buff > 0 then fill = true else fill = false end
+	end      
+	
    -- step edit
    if (row == 5 or row == 6 or row == 7) and (col >=5 and col <= 12) then
       if z == 1 then
@@ -450,33 +586,34 @@ end
 -- grid: "color" palette
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
-local br_seq_b		=  4			-- sequence, background
-local br_seq		=  8			-- sequence, looping steps
-local br_seq_a		= 12			-- sequence, active steps
-local br_seq_t		= 15			-- sequence, tracer
-local br_sub		=  2			-- substeps, background
-local br_sub_a		= 10			-- substeps, active steps
-local br_sub_t		=  5			-- substeps, tracer
-local br_rec		=  5			-- record
-local br_m			=  8			-- mute
-local br_t			=  4			-- triggers
-local br_t_a		= 10			-- triggers, active steps
-local br_t_h		= 15			--	triggers, held
-local br_e			=  8			-- erase
-local br_e_a		=  2			-- erase
-local br_rnd		=  4			-- randomize
-local br_rnd_a		=  2			-- randomize, active
-local br_reset		=  8			-- reset
-local br_reset_a	=  8			-- reset, active
-local br_play		=  4			-- play
-local br_play_a	= 10			-- play, active
-local br_pat		=  4			-- pattern, empty
-local br_pat_h		=  5			-- pattern, full
-local br_pat_c		=  7			-- pattern, current
-local br_fill		=  4			-- fill
-local br_fill_a	=  5			-- fill, active
-local br_shift_1	=  5			-- shift 1
-local br_shift_2	=  5			-- shift 2
+local br_seq_b		=  5	-- sequence, background
+local br_seq		=  8	-- sequence, looping steps
+local br_seq_a		= 12	-- sequence, active steps
+local br_seq_t		= 15	-- sequence, tracer
+local br_sub		=  2	-- substeps, background
+local br_sub_a		= 10	-- substeps, active steps
+local br_sub_t		=  5	-- substeps, tracer
+local br_rec		=  5	-- record
+local br_m			=  8	-- mute
+local br_t			=  4	-- triggers
+local br_t_a		= 10	-- triggers, active steps
+local br_t_h		= 15	--	triggers, held
+local br_shift_1	=  5	-- shift 1
+local br_shift_2	=  5	-- shift 2
+local br_pat_e		=  0	-- pattern, empty
+local br_pat_f		=  8	-- pattern, full
+local br_pat_c		=  4	-- pattern, current, empty
+local br_pat_c_f	= 12	-- pattern, current, full
+local br_e			=  8	-- erase
+local br_e_a		=  2	-- erase, active
+local br_rnd		=  4	-- randomize
+local br_rnd_a		=  2	-- randomize, active
+local br_reset		=  8	-- reset
+local br_reset_a	=  8	-- reset, active
+local br_play		=  4	-- play
+local br_play_a	= 10	-- play, active
+local br_fill		=  4	-- fill
+local br_fill_a	=  5	-- fill, active
 
 -- grid: lights
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
@@ -504,7 +641,7 @@ function g_redraw()
    -- track controls
    for x = 1, 4 do
       -- rec
-      if rec[x] then g:led(x, 5, br_rec - fps / 2 + frame) end
+      if rec[x] then g:led(x, 5, br_rec + frame_anim) end
       if not rec[x] then g:led(x, 5, 0) end
 
       -- mute
@@ -555,49 +692,74 @@ function g_redraw()
 
       if erase then 
          g:led(x, 8, br_e_a)
-      elseif random then
+		end
+		if random then
          g:led(x, 8, br_rnd_a + frame_rnd)
       end
    end
 
-   -- fill
-   for x = 13, 16 do
-      for y = 7, 8 do
-         if fill then
-            g:led(x, y, br_fill_a + #fill_buff)
-         else
-            g:led(x, y, br_fill)
-         end
-      end
-   end
+	-- patterns
+	for x = 1, 4 do
+		if p_state[x] == "empty" then
+			g:led(x + 12, 5, br_pat_e)
+		end
 
+		if p_state[x] == "full" then
+			g:led(x + 12, 5, br_pat_f)
+		end
+
+		if p_current == x and p_state[x] == "empty" then
+			g:led(x + 12, 5, br_pat_c)
+		end	
+
+		if p_current == x and p_state[x] == "full" then
+			g:led(x + 12, 5, br_pat_c_f)
+		end	
+	end
+	
+	
    -- erase
    if erase then
       g:led(16, 6, br_e_a)
-   else
+	elseif shift_2 then
+		g:led(16, 6, br_e_a)
+	else
       g:led(16, 6, br_e)
    end
-
+	
    -- random
    if random then
       g:led(15, 6, br_rnd_a + frame_rnd)
+	elseif shift_2 then
+		g:led(15, 6, br_rnd_a + frame_rnd)
    else
       g:led(15, 6, br_rnd)
    end
-
+	
    -- reset
    if seq_reset then
       g:led(14, 6, br_reset_a)
    else
       g:led(14, 6, br_reset)
    end
-
+	
    -- play
    if seq_play then
-      g:led(13, 6, br_play_a - fps / 2 + frame)
+      g:led(13, 6, br_play_a - frame_anim)
    else
       g:led(13, 6, br_play)
    end
+	
+	-- fill
+	for x = 13, 16 do
+		for y = 7, 8 do
+			if fill then
+				g:led(x, y, br_fill_a + #fill_buff)
+			else
+				g:led(x, y, br_fill)
+			end
+		end
+	end
 
    -- step edit
    for y = 5, 7 do
@@ -623,23 +785,30 @@ function g_redraw()
    end
 
    -- step edit: blink selection
-   if t[edit_step[2]].data_step[edit_step[1]] == 0 then -- no active steps, inside loop, outside loop
-      if t[edit_step[2]].step < t[edit_step[2]].loop_start or t[edit_step[2]].step > t[edit_step[2]].loop_start then
-         g:led(edit_step[1], edit_step[2], br_seq - frame)
-      else
-         g:led(edit_step[1], edit_step[2], br_seq_b - frame)
-      end
-   end
-   if t[edit_step[2]].data_step[edit_step[1]] == 1 then -- active steps
-      g:led(edit_step[1], edit_step[2], br_seq_a - frame)
-   end
+	do
+		local track = edit_step[2]
+		local step = edit_step[1]
+		local edit = t[track]
+
+		if edit.data_step[step] == 0 then
+			if edit.step < edit.loop_start or edit.step > edit.loop_end then
+				g:led(step, track, br_seq - frame_anim)
+			else
+				g:led(step, track, br_seq_b - math.floor(frame_anim / 3))
+			end
+		end
+
+		if edit.data_step[step] == 1 then
+			g:led(step, track, br_seq_a - frame_anim)
+		end
+	end
    
    -- tracers
    for y = 1, 4 do
       if edit_step[2] == y and edit_step[1] == t[y].step then -- blink tracer on edited step
-         g:led(t[y].step, y, br_seq_t - frame)
+         g:led(t[y].step, y, br_seq_t - frame_anim)
       else 
-         g:led(t[y].step, y, br_seq_t)   -- normal bright tracer
+         g:led(t[y].step, y, br_seq_t) -- normal bright tracer
       end
    end
       
@@ -691,6 +860,7 @@ function enc(n, d)
       if not seq_play then
          step = ((step - 1) % 16) + 1
          edit_step[1] = step
+
          for track = 1, 4 do
             t[track]:reset(step)
             t[track]:advance()
@@ -709,6 +879,7 @@ function enc(n, d)
 
          if not seq_play then
             edit_step[1] = t[1].step
+
             for track = 1, 4 do
                if d > 0 then
                   t[track]:advance()
@@ -740,10 +911,8 @@ function redraw()
    screen.move(128, 24)
    screen.text_right(t[1].index .. "/")
    screen.move(128, 32)
-   screen.text_right(t[1].data[t[1].index])
-   screen.move(128, 40)
    screen.text_right(params:get("clock_tempo") .. " bpm")
-   screen.update()
+	screen.update()
 end
 
 function refresh() redraw() end
