@@ -450,33 +450,33 @@ end
 -- grid: "color" palette
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
-local br_seq_b      =  4         -- sequence, background
-local br_seq      =  8         -- sequence, looping steps
-local br_seq_a      = 12         -- sequence, active steps
-local br_seq_t      = 15         -- sequence, tracer
-local br_sub      =  2         -- substeps, background
-local br_sub_a      = 10          -- substeps, active steps
-local br_sub_t      =    5         -- substeps, tracer
-local br_rec      =  5         -- record
-local br_m         =  8         -- mute
-local br_t         =  4         -- triggers
-local br_t_a      = 10         -- triggers, active steps
-local br_t_h      = 15         --   triggers, held
-local br_e         =  8         -- erase
-local br_e_a      =  2         -- erase
-local br_rnd      =  4         -- randomize
-local br_rnd_a      =  2         -- randomize, active
-local br_reset      =  8         -- reset
-local br_reset_a   =  8         -- reset, active
-local br_play      =  4         -- play
-local br_play_a   = 10         -- play, active
-local br_pat      =  4         -- pattern, empty
-local br_pat_h      =  5         -- pattern, full
-local br_pat_c      =  7         -- pattern, current
-local br_fill      =  4         -- fill
-local br_fill_a   =  5         -- fill, active
-local br_shift_1   =  5         -- shift 1
-local br_shift_2   =  5         -- shift 2
+local br_seq_b		=  4			-- sequence, background
+local br_seq		=  8			-- sequence, looping steps
+local br_seq_a		= 12			-- sequence, active steps
+local br_seq_t		= 15			-- sequence, tracer
+local br_sub		=  2			-- substeps, background
+local br_sub_a		= 10			-- substeps, active steps
+local br_sub_t		=  5			-- substeps, tracer
+local br_rec		=  5			-- record
+local br_m			=  8			-- mute
+local br_t			=  4			-- triggers
+local br_t_a		= 10			-- triggers, active steps
+local br_t_h		= 15			--	triggers, held
+local br_e			=  8			-- erase
+local br_e_a		=  2			-- erase
+local br_rnd		=  4			-- randomize
+local br_rnd_a		=  2			-- randomize, active
+local br_reset		=  8			-- reset
+local br_reset_a	=  8			-- reset, active
+local br_play		=  4			-- play
+local br_play_a	= 10			-- play, active
+local br_pat		=  4			-- pattern, empty
+local br_pat_h		=  5			-- pattern, full
+local br_pat_c		=  7			-- pattern, current
+local br_fill		=  4			-- fill
+local br_fill_a	=  5			-- fill, active
+local br_shift_1	=  5			-- shift 1
+local br_shift_2	=  5			-- shift 2
 
 -- grid: lights
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
